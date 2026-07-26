@@ -12,7 +12,8 @@ const t_uint32 kMagicV2      = 0x32564341; // "ACV2" (no resample/FFT flags yet)
 const t_uint32 kMagicV1      = 0x31564341; // "ACV1" (legacy: trailed by a filename-template string)
 const t_uint32 kFlagEnabled  = 1u << 0;
 const t_uint32 kFlagAutoGain = 1u << 1;
-const t_uint32 kFlagResample = 1u << 2;    // ACV3+
+// bit 2 (1u << 2) is reserved: early ACV3 builds stored the removed
+// nearest-rate-resample switch there; it is ignored on read, never written.
 const t_uint32 kFlagAdaptive = 1u << 3;    // ACV3+
 const t_uint32 kMaxStr       = 4096;
 
@@ -55,10 +56,9 @@ void autoconv_preset::to_preset(dsp_preset & out) const {
     pfc::array_t<t_uint8> a;
     put_u32(a, kMagicV3);
     t_uint32 flags = 0;
-    if (enabled)          flags |= kFlagEnabled;
-    if (auto_gain)        flags |= kFlagAutoGain;
-    if (resample_enabled) flags |= kFlagResample;
-    if (fft_adaptive)     flags |= kFlagAdaptive;
+    if (enabled)      flags |= kFlagEnabled;
+    if (auto_gain)    flags |= kFlagAutoGain;
+    if (fft_adaptive) flags |= kFlagAdaptive;
     put_u32(a, flags);
     put_f32(a, gain_db);
     put_str(a, folder);
@@ -84,9 +84,8 @@ void autoconv_preset::from_preset(const dsp_preset & in) {
     enabled   = (flags & kFlagEnabled)  != 0;
     auto_gain = (flags & kFlagAutoGain) != 0;
     if (magic == kMagicV3) {
-        resample_enabled = (flags & kFlagResample) != 0;
-        fft_adaptive     = (flags & kFlagAdaptive) != 0;
-    } // V1/V2 presets keep the defaults (both enabled)
+        fft_adaptive = (flags & kFlagAdaptive) != 0;
+    } // V1/V2 presets keep the default (enabled)
     if (g >= -60.f && g <= 60.f) gain_db = g;
     folder = f;
 }

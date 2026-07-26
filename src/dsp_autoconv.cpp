@@ -128,7 +128,7 @@ private:
 
         chain_result chain;
         std::string err;
-        if (!build_ir_chain(folderw.get_ptr(), sr, nch, m_cfg.resample_enabled, chain, err)) {
+        if (!build_ir_chain(folderw.get_ptr(), sr, nch, chain, err)) {
             console::formatter() << "[Auto Calibration Convolver] cannot scan \"" << m_cfg.folder
                                  << "\" (" << err.c_str() << ") - passing through";
             return;
@@ -149,16 +149,9 @@ private:
 
         if (chain.used_count == 0) {
             console::formatter() << "[Auto Calibration Convolver] no usable calibration WAV whose"
-                                    " name contains " << sr
-                                 << (m_cfg.resample_enabled ? " (or any nearby rate)" : "")
-                                 << " found under \"" << m_cfg.folder << "\" - passing through";
+                                    " name contains " << sr << " found under \"" << m_cfg.folder
+                                 << "\" - passing through";
             return;
-        }
-
-        if (chain.matched_rate != sr) {
-            console::formatter() << "[Auto Calibration Convolver] no file named with " << sr
-                                 << " Hz - using nearest available rate " << chain.matched_rate
-                                 << " Hz (impulse responses resampled to " << sr << " Hz)";
         }
 
         // Level matching applies to the whole combined chain.
