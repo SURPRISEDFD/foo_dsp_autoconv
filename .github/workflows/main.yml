@@ -1,0 +1,88 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # foobar2000 SDK direct link (currently a .7z archive; tools/get_sdk.ps1
+  # handles both .7z and .zip). The official filename changes with every SDK
+  # release - check https://www.foobar2000.org/SDK and update this URL when a
+  # new SDK is published (the cache key below follows automatically).
+  # 7-Zip is preinstalled on GitHub windows runners, so no extra setup is needed.
+  FB2K_SDK_URL: "https://www.foobar2000.org/downloads/SDK-2025-03-07.7z"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ Win32, x64 ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache foobar2000 SDK
+        id: sdkcache
+        uses: actions/cache@v4
+        with:
+          path: SDK
+          key: fb2k-sdk-v2-${{ env.FB2K_SDK_URL }}
+
+      - name: Download foobar2000 SDK
+        if: steps.sdkcache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./tools/get_sdk.ps1 -Url "${{ env.FB2K_SDK_URL }}" -Dest SDK
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release ${{ matrix.platform }}
+        shell: pwsh
+        # /p:PlatformToolset=v143 is a global property: it overrides the SDK
+        # projects' own v142 setting so every /GL object comes from the same
+        # compiler version (mixing toolsets fails the final link with C1047).
+        run: msbuild src/foo_dsp_autoconv.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:PlatformToolset=v143
+
+      - name: Upload DLL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: foo_dsp_autoconv-${{ matrix.platform }}
+          path: _bin/Release/${{ matrix.platform }}/foo_dsp_autoconv.dll
+          if-no-files-found: error
+
+  package:
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dl
+
+      - name: Assemble fb2k-component (x86 at root, x64 in x64\)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path pkg/x64 | Out-Null
+          Copy-Item dl/foo_dsp_autoconv-Win32/foo_dsp_autoconv.dll pkg/foo_dsp_autoconv.dll
+          Copy-Item dl/foo_dsp_autoconv-x64/foo_dsp_autoconv.dll pkg/x64/foo_dsp_autoconv.dll
+          Compress-Archive -Path pkg/* -DestinationPath foo_dsp_autoconv.zip -Force
+          Rename-Item foo_dsp_autoconv.zip foo_dsp_autoconv.fb2k-component
+
+      - name: Upload component package
+        uses: actions/upload-artifact@v4
+        with:
+          name: foo_dsp_autoconv-fb2k-component
+          path: foo_dsp_autoconv.fb2k-component
+
+      - name: Attach to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: foo_dsp_autoconv.fb2k-component
