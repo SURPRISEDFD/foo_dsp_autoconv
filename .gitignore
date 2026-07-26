@@ -1,0 +1,10 @@
+# foobar2000 SDK (fetched by tools/get_sdk.ps1, never committed)
+/SDK/
+
+# build outputs
+/_bin/
+/_int/
+
+# Visual Studio noise
+/.vs/
+*.user

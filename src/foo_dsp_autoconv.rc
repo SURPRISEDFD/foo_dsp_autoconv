@@ -1,0 +1,31 @@
+#include <windows.h>
+#include "resource.h"
+
+IDD_CONFIG DIALOGEX 0, 0, 300, 168
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Auto Calibration Convolver"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Enable processing", IDC_ENABLED, "Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP, 7, 8, 280, 10
+
+    LTEXT           "Calibration folder:", IDC_STATIC, 7, 26, 120, 8
+    EDITTEXT        IDC_FOLDER, 7, 36, 258, 13, ES_AUTOHSCROLL
+    PUSHBUTTON      "...", IDC_BROWSE, 269, 36, 24, 13
+
+    LTEXT           "Filename template ({samplerate} is replaced by the stream rate, e.g. 44100):",
+                    IDC_STATIC, 7, 56, 286, 8
+    EDITTEXT        IDC_TEMPLATE, 7, 66, 286, 13, ES_AUTOHSCROLL
+
+    CONTROL         "Auto level match (normalize impulse response to unity RMS gain)",
+                    IDC_AUTOGAIN, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 7, 86, 286, 10
+
+    LTEXT           "Additional gain (dB):", IDC_STATIC, 7, 106, 80, 8
+    EDITTEXT        IDC_GAIN, 92, 104, 50, 13, ES_AUTOHSCROLL
+
+    LTEXT           "Missing or mismatched files are reported in the foobar2000 Console and audio passes through untouched.",
+                    IDC_STATIC, 7, 124, 286, 18
+
+    DEFPUSHBUTTON   "OK", IDOK, 186, 146, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 243, 146, 50, 14
+END

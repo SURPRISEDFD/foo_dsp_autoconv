@@ -1,0 +1,17 @@
+#ifndef FOO_DSP_AUTOCONV_RESOURCE_H
+#define FOO_DSP_AUTOCONV_RESOURCE_H
+
+#define IDD_CONFIG    2001
+
+#define IDC_ENABLED   2101
+#define IDC_FOLDER    2102
+#define IDC_BROWSE    2103
+#define IDC_TEMPLATE  2104
+#define IDC_AUTOGAIN  2105
+#define IDC_GAIN      2106
+
+#ifndef IDC_STATIC
+#define IDC_STATIC (-1)
+#endif
+
+#endif /* FOO_DSP_AUTOCONV_RESOURCE_H */
