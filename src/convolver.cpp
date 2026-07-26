@@ -2,16 +2,20 @@
 #include <algorithm>
 
 bool PartitionedConvolver::setup(const std::vector<std::vector<double>> & ir,
-                                 unsigned nch, std::string & err) {
+                                 unsigned nch, size_t block, std::string & err) {
     clear();
     if (nch == 0 || nch > 32) { err = "bad channel count"; return false; }
     if (ir.empty())           { err = "empty impulse response"; return false; }
+    if (block < kMinBlock || block > kMaxBlock || (block & (block - 1)) != 0) {
+        err = "invalid FFT block size (must be a power of two in [512, 32768])";
+        return false;
+    }
 
     size_t irlen = 0;
     for (const auto & c : ir) irlen = (std::max)(irlen, c.size());
     if (irlen == 0) { err = "empty impulse response"; return false; }
 
-    m_B = kBlock;
+    m_B = block;
     m_N = 2 * m_B;
     m_P = (irlen + m_B - 1) / m_B;
     m_irlen = irlen;

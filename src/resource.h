@@ -6,9 +6,10 @@
 #define IDC_ENABLED   2101
 #define IDC_FOLDER    2102
 #define IDC_BROWSE    2103
-#define IDC_TEMPLATE  2104
 #define IDC_AUTOGAIN  2105
 #define IDC_GAIN      2106
+#define IDC_RESAMPLE  2107
+#define IDC_ADAPTIVE  2108
 
 #ifndef IDC_STATIC
 #define IDC_STATIC (-1)

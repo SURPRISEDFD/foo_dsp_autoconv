@@ -6,7 +6,8 @@
 #include <string>
 
 // Uniform partitioned overlap-save convolver.
-//   block size  B = kBlock
+//   block size  B = the `block` passed to setup(); a power of two in
+//                   [kMinBlock, kMaxBlock] (kDefaultBlock in fixed mode)
 //   FFT size    N = 2*B
 //   partitions  P = ceil(irLength / B)
 //
@@ -17,22 +18,30 @@
 // convolution tail (irLength-1 frames) so no audio is ever lost at stream end.
 class PartitionedConvolver {
 public:
-    static const size_t kBlock = 4096;
+    static constexpr size_t kDefaultBlock = 4096;  // fixed (non-adaptive) mode
+    static constexpr size_t kMinBlock     = 512;   // adaptive lower clamp
+    static constexpr size_t kMaxBlock     = 32768; // adaptive upper clamp
 
     // ir: per-channel impulse response, already gain-scaled.
     // nch: stream channel count. Channel mapping:
     //   1 IR channel        -> applied to every stream channel
     //   IR channels == nch  -> one IR channel per stream channel
     //   anything else       -> IR channel 0 everywhere (caller should warn)
-    bool setup(const std::vector<std::vector<double>> & ir, unsigned nch, std::string & err);
+    // block: FFT block size B. MUST be a power of two in
+    //   [kMinBlock, kMaxBlock]. Anything else - odd sizes, 16385 and other
+    //   non-powers-of-two - is rejected here, because a non-power-of-two FFT
+    //   would be pathologically slow.
+    bool setup(const std::vector<std::vector<double>> & ir, unsigned nch,
+               size_t block, std::string & err);
 
     void reset();                                    // drop history/FIFO, keep IR
     void clear() { *this = PartitionedConvolver(); } // full teardown
 
-    bool     ready()     const { return m_ready; }
-    unsigned channels()  const { return m_nch; }
-    size_t   ir_length() const { return m_irlen; }
-    size_t   buffered()  const { return m_fill; }    // frames held, not yet output
+    bool     ready()      const { return m_ready; }
+    unsigned channels()   const { return m_nch; }
+    size_t   ir_length()  const { return m_irlen; }
+    size_t   block_size() const { return m_B; }
+    size_t   buffered()   const { return m_fill; }   // frames held, not yet output
 
     // Feed interleaved input; append processed interleaved frames to out.
     void process(const audio_sample * in, size_t frames, std::vector<audio_sample> & out);

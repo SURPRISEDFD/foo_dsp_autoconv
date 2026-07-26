@@ -39,8 +39,9 @@ INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         autoconv_preset * cfg = (autoconv_preset*)lp;
         CheckDlgButton(dlg, IDC_ENABLED,  cfg->enabled   ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(dlg, IDC_AUTOGAIN, cfg->auto_gain ? BST_CHECKED : BST_UNCHECKED);
-        set_text_utf8(dlg, IDC_FOLDER,   cfg->folder);
-        set_text_utf8(dlg, IDC_TEMPLATE, cfg->name_template);
+        CheckDlgButton(dlg, IDC_RESAMPLE, cfg->resample_enabled ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(dlg, IDC_ADAPTIVE, cfg->fft_adaptive     ? BST_CHECKED : BST_UNCHECKED);
+        set_text_utf8(dlg, IDC_FOLDER, cfg->folder);
         wchar_t g[64];
         swprintf_s(g, L"%.1f", (double)cfg->gain_db);
         SetDlgItemTextW(dlg, IDC_GAIN, g);
@@ -55,10 +56,9 @@ INT_PTR CALLBACK dlg_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             autoconv_preset * cfg = (autoconv_preset*)GetWindowLongPtrW(dlg, GWLP_USERDATA);
             cfg->enabled   = IsDlgButtonChecked(dlg, IDC_ENABLED)  == BST_CHECKED;
             cfg->auto_gain = IsDlgButtonChecked(dlg, IDC_AUTOGAIN) == BST_CHECKED;
-            cfg->folder        = get_text_utf8(dlg, IDC_FOLDER);
-            cfg->name_template = get_text_utf8(dlg, IDC_TEMPLATE);
-            if (cfg->name_template.is_empty())
-                cfg->name_template = "Calibration_{samplerate}.wav";
+            cfg->resample_enabled = IsDlgButtonChecked(dlg, IDC_RESAMPLE) == BST_CHECKED;
+            cfg->fft_adaptive     = IsDlgButtonChecked(dlg, IDC_ADAPTIVE) == BST_CHECKED;
+            cfg->folder = get_text_utf8(dlg, IDC_FOLDER);
             {
                 wchar_t buf[64] = {};
                 GetDlgItemTextW(dlg, IDC_GAIN, buf, 63);

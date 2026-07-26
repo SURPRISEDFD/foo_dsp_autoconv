@@ -1,7 +1,7 @@
 #include "fb2k_sdk.h"
 #include "preset.h"
 #include "convolver.h"
-#include "wav_loader.h"
+#include "ir_chain.h"
 #include "config_dialog.h"
 #include <cmath>
 #include <cstring>
@@ -54,10 +54,10 @@ public:
 
         if (sr != m_srate || nch != m_nch || mask != m_mask) {
             emit_tail();                // finish the previous stream cleanly (old format)
-            reconfigure(sr, nch, mask); // load the matching IR for the new format
+            reconfigure(sr, nch, mask); // load the matching IR chain for the new format
         }
 
-        if (!m_active) return true;     // bypass: no usable calibration file
+        if (!m_active) return true;     // bypass: no usable calibration files
 
         m_buf.clear();
         m_conv.process(chunk->get_data(), chunk->get_sample_count(), m_buf);
@@ -124,58 +124,82 @@ private:
             return;
         }
 
-        const pfc::string8 path8 = m_cfg.build_full_path(sr);
-        pfc::stringcvt::string_wide_from_utf8 pathw(path8);
+        pfc::stringcvt::string_wide_from_utf8 folderw(m_cfg.folder);
 
-        ir_data ir;
+        chain_result chain;
         std::string err;
-        if (!load_wav_ir(pathw.get_ptr(), ir, err)) {
-            console::formatter() << "[Auto Calibration Convolver] no calibration for " << sr
-                                 << " Hz: " << path8 << " (" << err.c_str()
-                                 << ") - passing through";
+        if (!build_ir_chain(folderw.get_ptr(), sr, nch, m_cfg.resample_enabled, chain, err)) {
+            console::formatter() << "[Auto Calibration Convolver] cannot scan \"" << m_cfg.folder
+                                 << "\" (" << err.c_str() << ") - passing through";
             return;
-        }
-        if (ir.sample_rate != sr) {
-            console::formatter() << "[Auto Calibration Convolver] " << path8
-                                 << " is " << ir.sample_rate << " Hz but the stream is "
-                                 << sr << " Hz - passing through";
-            return;
-        }
-        if (ir.channels != 1 && ir.channels != nch) {
-            console::formatter() << "[Auto Calibration Convolver] IR has " << ir.channels
-                                 << " channels, stream has " << nch
-                                 << " - using IR channel 1 for all stream channels";
-        }
-        if (strstr(m_cfg.name_template.get_ptr(), "{samplerate}") == nullptr && !m_warned_template) {
-            m_warned_template = true;
-            console::formatter() << "[Auto Calibration Convolver] note: filename template has no"
-                                    " {samplerate} placeholder - the same file is used for every rate";
         }
 
-        // Level matching, applied by scaling the IR before building spectra.
-        const double gain = compute_gain(ir);
-        for (auto & c : ir.ch)
+        // One console line per matched file: what was used, what was skipped and why.
+        for (const chain_file_info & f : chain.files) {
+            const pfc::string8 p8(pfc::stringcvt::string_utf8_from_wide(f.path.c_str()));
+            if (f.loaded) {
+                console::formatter() << "[Auto Calibration Convolver] + " << p8 << " ("
+                                     << (t_uint64)f.frames << " taps, " << f.channels << " ch"
+                                     << (f.note.empty() ? "" : "; ") << f.note.c_str() << ")";
+            } else {
+                console::formatter() << "[Auto Calibration Convolver] skipped " << p8
+                                     << " (" << f.note.c_str() << ")";
+            }
+        }
+
+        if (chain.used_count == 0) {
+            console::formatter() << "[Auto Calibration Convolver] no usable calibration WAV whose"
+                                    " name contains " << sr
+                                 << (m_cfg.resample_enabled ? " (or any nearby rate)" : "")
+                                 << " found under \"" << m_cfg.folder << "\" - passing through";
+            return;
+        }
+
+        if (chain.matched_rate != sr) {
+            console::formatter() << "[Auto Calibration Convolver] no file named with " << sr
+                                 << " Hz - using nearest available rate " << chain.matched_rate
+                                 << " Hz (impulse responses resampled to " << sr << " Hz)";
+        }
+
+        // Level matching applies to the whole combined chain.
+        const double gain = compute_gain(chain.combined);
+        for (auto & c : chain.combined.ch)
             for (auto & v : c) v *= gain;
 
+        const size_t block = pick_block(chain.combined.frames(), m_cfg.fft_adaptive);
+
         std::string cerr;
-        if (!m_conv.setup(ir.ch, nch, cerr)) {
+        if (!m_conv.setup(chain.combined.ch, nch, block, cerr)) {
             console::formatter() << "[Auto Calibration Convolver] convolver setup failed ("
                                  << cerr.c_str() << ") - passing through";
             return;
         }
 
         m_active = true;
-        console::formatter() << "[Auto Calibration Convolver] loaded " << path8
-                             << " (" << (t_uint64)ir.frames() << " taps, " << ir.channels
-                             << " ch) for " << sr << " Hz, gain "
+        console::formatter() << "[Auto Calibration Convolver] chained " << (t_uint64)chain.used_count
+                             << " file(s) -> " << (t_uint64)chain.combined.frames() << " taps, "
+                             << chain.combined.channels << " ch for " << sr << " Hz, FFT block "
+                             << (t_uint64)block << ", gain "
                              << pfc::format_float(20.0 * log10(gain > 0.0 ? gain : 1.0), 0, 2)
                              << " dB";
     }
 
-    // Auto level matching: normalize the IR so its RMS (white-noise) gain is
-    // unity - broadband program material keeps its overall loudness while the
-    // relative balance between IR channels is preserved (single global scale).
-    // A manual dB offset is applied on top.
+    // Adaptive FFT block: the smallest power of two >= the combined IR
+    // length, clamped to [kMinBlock, kMaxBlock]. By construction this is
+    // always a power of two - odd or non-power-of-two sizes such as 16385
+    // can never be produced. Larger blocks add latency, which foobar2000
+    // compensates for via get_latency().
+    static size_t pick_block(size_t irlen, bool adaptive) {
+        if (!adaptive) return PartitionedConvolver::kDefaultBlock;
+        size_t b = PartitionedConvolver::kMinBlock;
+        while (b < irlen && b < PartitionedConvolver::kMaxBlock) b <<= 1;
+        return b;
+    }
+
+    // Auto level matching: normalize the combined impulse response so its RMS
+    // (white-noise) gain is unity - broadband program material keeps its
+    // overall loudness while the relative balance between channels is
+    // preserved (single global scale). A manual dB offset is applied on top.
     double compute_gain(const ir_data & ir) const {
         double g = 1.0;
         if (m_cfg.auto_gain) {
@@ -197,7 +221,6 @@ private:
     unsigned m_srate = 0, m_nch = 0, m_mask = 0;
     bool m_active = false;
     bool m_warned_folder = false;
-    bool m_warned_template = false;
 };
 
 static dsp_factory_t<dsp_autoconv> g_dsp_autoconv_factory;

@@ -7,9 +7,13 @@ const GUID autoconv_preset::guid =
 
 namespace {
 
-const t_uint32 kMagic        = 0x31564341; // "ACV1"
+const t_uint32 kMagicV3      = 0x33564341; // "ACV3"
+const t_uint32 kMagicV2      = 0x32564341; // "ACV2" (no resample/FFT flags yet)
+const t_uint32 kMagicV1      = 0x31564341; // "ACV1" (legacy: trailed by a filename-template string)
 const t_uint32 kFlagEnabled  = 1u << 0;
 const t_uint32 kFlagAutoGain = 1u << 1;
+const t_uint32 kFlagResample = 1u << 2;    // ACV3+
+const t_uint32 kFlagAdaptive = 1u << 3;    // ACV3+
 const t_uint32 kMaxStr       = 4096;
 
 void put_u32(pfc::array_t<t_uint8> & a, t_uint32 v) {
@@ -49,14 +53,15 @@ struct reader {
 
 void autoconv_preset::to_preset(dsp_preset & out) const {
     pfc::array_t<t_uint8> a;
-    put_u32(a, kMagic);
+    put_u32(a, kMagicV3);
     t_uint32 flags = 0;
-    if (enabled)   flags |= kFlagEnabled;
-    if (auto_gain) flags |= kFlagAutoGain;
+    if (enabled)          flags |= kFlagEnabled;
+    if (auto_gain)        flags |= kFlagAutoGain;
+    if (resample_enabled) flags |= kFlagResample;
+    if (fft_adaptive)     flags |= kFlagAdaptive;
     put_u32(a, flags);
     put_f32(a, gain_db);
     put_str(a, folder);
-    put_str(a, name_template);
     out.set_owner(guid);
     out.set_data(a.get_ptr(), a.get_size());
 }
@@ -67,40 +72,21 @@ void autoconv_preset::from_preset(const dsp_preset & in) {
     reader r{ static_cast<const t_uint8*>(in.get_data()), in.get_data_size() };
     t_uint32 magic = 0, flags = 0;
     float g = 0.f;
-    pfc::string8 f, t;
-    if (!r.u32(magic) || magic != kMagic) return;
-    if (!r.u32(flags) || !r.f32(g) || !r.str(f) || !r.str(t)) return;
+    pfc::string8 f;
+    if (!r.u32(magic)) return;
+    if (magic != kMagicV1 && magic != kMagicV2 && magic != kMagicV3) return;
+    if (!r.u32(flags) || !r.f32(g) || !r.str(f)) return;
+    if (magic == kMagicV1) {
+        pfc::string8 legacy_template;
+        r.str(legacy_template); // read and discard; matching is rate-in-filename now
+    }
 
     enabled   = (flags & kFlagEnabled)  != 0;
     auto_gain = (flags & kFlagAutoGain) != 0;
+    if (magic == kMagicV3) {
+        resample_enabled = (flags & kFlagResample) != 0;
+        fft_adaptive     = (flags & kFlagAdaptive) != 0;
+    } // V1/V2 presets keep the defaults (both enabled)
     if (g >= -60.f && g <= 60.f) gain_db = g;
     folder = f;
-    if (!t.is_empty()) name_template = t;
-}
-
-pfc::string8 autoconv_preset::build_filename(unsigned sample_rate) const {
-    pfc::string8 tmpl = name_template.is_empty()
-        ? pfc::string8("Calibration_{samplerate}.wav") : name_template;
-    pfc::string8 out;
-    const char * tag = "{samplerate}";
-    const size_t taglen = strlen(tag);
-    const char * s = tmpl.get_ptr();
-    for (;;) {
-        const char * hit = strstr(s, tag);
-        if (!hit) { out.add_string(s); break; }
-        out.add_string(s, hit - s);
-        out.add_string(pfc::format_uint(sample_rate));
-        s = hit + taglen;
-    }
-    return out;
-}
-
-pfc::string8 autoconv_preset::build_full_path(unsigned sample_rate) const {
-    pfc::string8 out = folder;
-    if (!out.is_empty()) {
-        const char last = out.get_ptr()[out.length() - 1];
-        if (last != '\\' && last != '/') out.add_string("\\");
-    }
-    out.add_string(build_filename(sample_rate));
-    return out;
 }
