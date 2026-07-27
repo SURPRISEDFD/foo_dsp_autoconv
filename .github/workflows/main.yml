@@ -15,6 +15,13 @@ env:
   # 7-Zip is preinstalled on GitHub windows runners, so no extra setup is needed.
   FB2K_SDK_URL: "https://www.foobar2000.org/downloads/SDK-2025-03-07.7z"
 
+  # r8brain-free-src (MIT, (c) Aleksey Vaneev / Voxengo) - resamples the
+  # calibration impulse responses when no exact-rate file exists. The repo
+  # publishes no release archives, so this tracks master; to pin an exact
+  # revision use https://github.com/avaneev/r8brain-free-src/archive/<commit>.zip
+  # (the cache key follows the URL automatically).
+  R8BRAIN_URL: "https://github.com/avaneev/r8brain-free-src/archive/refs/heads/master.zip"
+
 jobs:
   build:
     runs-on: windows-latest
@@ -37,6 +44,18 @@ jobs:
         if: steps.sdkcache.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./tools/get_sdk.ps1 -Url "${{ env.FB2K_SDK_URL }}" -Dest SDK
+
+      - name: Cache r8brain-free-src
+        id: r8bcache
+        uses: actions/cache@v4
+        with:
+          path: third_party/r8brain
+          key: r8brain-v1-${{ env.R8BRAIN_URL }}
+
+      - name: Download r8brain-free-src
+        if: steps.r8bcache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./tools/get_r8brain.ps1 -Url "${{ env.R8BRAIN_URL }}" -Dest third_party/r8brain
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
