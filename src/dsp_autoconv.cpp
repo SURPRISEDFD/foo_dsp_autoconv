@@ -128,7 +128,7 @@ private:
 
         chain_result chain;
         std::string err;
-        if (!build_ir_chain(folderw.get_ptr(), sr, nch, chain, err)) {
+        if (!build_ir_chain(folderw.get_ptr(), sr, nch, m_cfg.resample_enabled, chain, err)) {
             console::formatter() << "[Auto Calibration Convolver] cannot scan \"" << m_cfg.folder
                                  << "\" (" << err.c_str() << ") - passing through";
             return;
@@ -149,13 +149,20 @@ private:
 
         if (chain.used_count == 0) {
             console::formatter() << "[Auto Calibration Convolver] no usable calibration WAV whose"
-                                    " name contains " << sr << " found under \"" << m_cfg.folder
-                                 << "\" - passing through";
+                                    " name contains " << sr
+                                 << (m_cfg.resample_enabled ? " (or any nearby standard rate)" : "")
+                                 << " found under \"" << m_cfg.folder << "\" - passing through";
             return;
         }
 
+        if (chain.matched_rate != sr) {
+            console::formatter() << "[Auto Calibration Convolver] no file for " << sr
+                                 << " Hz - using nearest available rate " << chain.matched_rate
+                                 << " Hz (impulse responses resampled to " << sr << " Hz)";
+        }
+
         // Level matching applies to the whole combined chain.
-        const double gain = compute_gain(chain.combined);
+        const double gain = compute_gain(chain.combined, sr);
         for (auto & c : chain.combined.ch)
             for (auto & v : c) v *= gain;
 
@@ -189,17 +196,26 @@ private:
         return b;
     }
 
-    // Auto level matching: normalize the combined impulse response so its RMS
-    // (white-noise) gain is unity - broadband program material keeps its
-    // overall loudness while the relative balance between channels is
-    // preserved (single global scale). A manual dB offset is applied on top.
-    double compute_gain(const ir_data & ir) const {
+    // Auto level matching: normalize the combined impulse response so its
+    // AVERAGE POWER RESPONSE OVER THE AUDIBLE BAND (20 Hz - 20 kHz) is unity,
+    // preserving the relative balance between channels (single global scale).
+    // A manual dB offset is applied on top.
+    //
+    // Why band-limited instead of plain sum(h^2): raw IR energy integrates
+    // the response over the FULL bandwidth of the stream rate. A 96 kHz
+    // calibration whose audible band is cut but whose ultrasonic band sits
+    // near 0 dB would then be normalized DOWN relative to the same
+    // correction at 44.1 kHz - audibly quieter at 96 kHz while broadband
+    // meters (LUFS included) read the same or higher because of the
+    // untouched ultrasonics. Averaging |H(f)|^2 over 20 Hz - 20 kHz makes
+    // the gain independent of the sample rate and of any ultrasonic content.
+    double compute_gain(const ir_data & ir, unsigned sr) const {
         double g = 1.0;
         if (m_cfg.auto_gain) {
-            double energy = 0.0;
+            double sum = 0.0;
             for (const auto & c : ir.ch)
-                for (double v : c) energy += v * v;
-            const double mean = ir.ch.empty() ? 0.0 : energy / double(ir.ch.size());
+                sum += ir_band_avg_power(c, sr, 20.0, 20000.0);
+            const double mean = ir.ch.empty() ? 0.0 : sum / double(ir.ch.size());
             if (mean > 1e-20) g = 1.0 / sqrt(mean);
         }
         g *= pow(10.0, m_cfg.gain_db / 20.0);

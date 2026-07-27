@@ -53,7 +53,7 @@
 
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)SDK;$(SolutionDir)SDK\foobar2000;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)SDK;$(SolutionDir)SDK\foobar2000;$(SolutionDir)third_party\r8brain;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_WINDOWS;_USRDLL;UNICODE;_UNICODE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <WarningLevel>Level3</WarningLevel>
@@ -111,6 +111,12 @@
     <ClCompile Include="preset.cpp" />
     <ClCompile Include="wav_loader.cpp" />
     <ClCompile Include="ir_chain.cpp" />
+    <ClCompile Include="ir_resampler.cpp" />
+    <!-- Older r8brain revisions ship a r8bbase.cpp translation unit; current
+         ones are fully header-only. Compile it only when it exists. -->
+    <ClCompile Include="..\third_party\r8brain\r8bbase.cpp" Condition="Exists('..\third_party\r8brain\r8bbase.cpp')">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
     <ClCompile Include="convolver.cpp" />
     <ClCompile Include="config_dialog.cpp" />
     <ClCompile Include="dsp_autoconv.cpp" />
@@ -120,6 +126,7 @@
     <ClInclude Include="preset.h" />
     <ClInclude Include="wav_loader.h" />
     <ClInclude Include="ir_chain.h" />
+    <ClInclude Include="ir_resampler.h" />
     <ClInclude Include="fft.h" />
     <ClInclude Include="convolver.h" />
     <ClInclude Include="config_dialog.h" />
